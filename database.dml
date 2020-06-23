@@ -1,0 +1,25 @@
+CREATE TABLE "regions" (
+	"index"	INTEGER PRIMARY KEY AUTOINCREMENT,
+	"name"	TEXT NOT NULL UNIQUE,
+	"numnations"	INTEGER,
+	"delegate"	TEXT,
+	"founder"	TEXT,
+	"factbook"	TEXT,
+	"lastupdate"	REAL,
+	"firstnation"	TEXT,
+	"passworded"	INTEGER,
+	"founderless"	INTEGER
+);|||CREATE TABLE "nations" (
+	"index"	INTEGER PRIMARY KEY AUTOINCREMENT,
+	"name"	TEXT NOT NULL UNIQUE,
+	"region"	TEXT NOT NULL,
+	"endorsements"	INTEGER,
+	"WAStatus"	INTEGER
+);|||CREATE TABLE "endorsements" (
+	"EndorserID"	INTEGER NOT NULL,
+	"EndorseeID"	INTEGER NOT NULL
+);|||CREATE TABLE "embassies" (
+	"region1"	INTEGER NOT NULL,
+	"region2"	INTEGER NOT NULL,
+	UNIQUE (region1, region1) ON CONFLICT REPLACE
+);
