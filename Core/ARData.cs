@@ -2,6 +2,7 @@ using System.Linq;
 using System.IO;
 using System;
 using System.Net;
+using System.Threading.Tasks;
 using System.Collections.Generic;
 
 using System.Data.SQLite;
@@ -29,12 +30,19 @@ namespace ARCore.Core
 
         private readonly SQLiteConnection connection;
 
+        // We keep these two cached because they are potentially common calls
+        int NumNationsCache;
+        int NumRegionsCache;
+
         public ARData(IServiceProvider services)
         {
             Logger.Log(LogEventType.Verbose, "Initializing ARData");
 
             _services = services;
             _APIHandler = services.GetRequiredService<APIHandler>();
+
+            NumNationsCache = 0;
+            NumRegionsCache = 0;
 
             Logger.Log(LogEventType.Debug, "Accessing update data from Atagait.com");
             Dictionary<string, UpdateDerivation> updateData;
@@ -58,7 +66,7 @@ namespace ARCore.Core
             }
 
             Logger.Log(LogEventType.Information, "Setting up WorldData Database");
-            string DatabaseSetup = File.ReadAllText("./database.dml");
+            string DatabaseSetup = File.ReadAllText("./database.ddl");
             string[] Queries = DatabaseSetup.Split("|||");
             using(var transaction = connection.BeginTransaction())
             {
@@ -96,19 +104,21 @@ namespace ARCore.Core
             using(var transaction = connection.BeginTransaction()){
                 foreach(Region region in regionData.Regions)
                 {
-                    var command = new SQLiteCommand("INSERT INTO regions (name, numnations, delegate, founder, factbook, lastupdate, firstnation, passworded, founderless) VALUES (@name, @numnations, @delegate, @founder, @factbook, @lastupdate, @firstnation, @passworded, @founderless)");
+                    var command = new SQLiteCommand("INSERT INTO regions (name, nations, numnations, delegate, delegateauth, founder, factbook, lastupdate, firstnation, passworded, founderless) VALUES (@name, @nations, @numnations, @delegate, @delegateauth, @founder, @factbook, @lastupdate, @firstnation, @passworded, @founderless)");
                     command.Connection = connection;
                     command.Transaction = transaction;
 
-                    command.Parameters.Add(new SQLiteParameter("@name", region.name));
-                    command.Parameters.Add(new SQLiteParameter("@numnations", region.NumNations));
-                    command.Parameters.Add(new SQLiteParameter("@delegate", region.Delegate));
-                    command.Parameters.Add(new SQLiteParameter("@founder", region.Founder));
-                    command.Parameters.Add(new SQLiteParameter("@factbook", region.Factbook));
-                    command.Parameters.Add(new SQLiteParameter("@lastupdate", region.lastUpdate));
-                    command.Parameters.Add(new SQLiteParameter("@firstnation", region.Nations.Length > 0?region.Nations[0]:""));
-                    command.Parameters.Add(new SQLiteParameter("@passworded", passwordRegions.Any(R=>R==region.Name)?1:0));
-                    command.Parameters.Add(new SQLiteParameter("@founderless", founderlessRegions.Any(R=>R==region.Name)?1:0));
+                    command.Parameters.AddWithValue("@name", region.Name);
+                    command.Parameters.AddWithValue("@nations", region.nations);
+                    command.Parameters.AddWithValue("@numnations", region.NumNations);
+                    command.Parameters.AddWithValue("@delegate", region.Delegate);
+                    command.Parameters.AddWithValue("@delegateauth", region.DelegateAuth);
+                    command.Parameters.AddWithValue("@founder", region.Founder);
+                    command.Parameters.AddWithValue("@factbook", region.Factbook);
+                    command.Parameters.AddWithValue("@lastupdate", (long)region.lastUpdate);
+                    command.Parameters.AddWithValue("@firstnation", region.Nations.Length > 0?region.Nations[0]:"");
+                    command.Parameters.AddWithValue("@passworded", passwordRegions.Any(R=>R==region.Name)?1:0);
+                    command.Parameters.AddWithValue("@founderless", founderlessRegions.Any(R=>R==region.Name)?1:0);
                     command.ExecuteNonQuery();
                 }
                 transaction.Commit();
@@ -162,6 +172,28 @@ namespace ARCore.Core
 
             return null;
         }
+
+        public async Task<Nation> GetNationAsync(string Nation)
+        {
+            var command = new SQLiteCommand("SELECT * FROM nations WHERE name=@name", connection);
+            command.Parameters.Add(new SQLiteParameter("@name", Nation));
+
+            using(var dbReader = await command.ExecuteReaderAsync())
+            {
+                while(dbReader.Read())
+                {
+                    return new Nation(){
+                        Index = dbReader.GetInt64(0),
+                        name = dbReader.GetString(1),
+                        Region = dbReader.GetString(2),
+                        Votes = dbReader.GetInt64(3),
+                        WAStatus = dbReader.GetString(4)
+                    };
+                }
+            }
+
+            return null;
+        }
             
 
         public Region GetRegion(string Region)
@@ -173,18 +205,57 @@ namespace ARCore.Core
             {
                 while(dbReader.Read())
                 {
+                    try{
+                        return new Region()
+                        {
+                            Index = dbReader.GetInt64(0),
+                            name = dbReader.GetString(1),
+                            nations = dbReader.GetString(2),
+                            NumNations = (int)dbReader.GetInt64(3),
+                            Delegate = dbReader.GetString(4),
+                            DelegateAuth = dbReader.GetString(5),
+                            Founder = dbReader.GetString(6),
+                            Factbook = dbReader.GetString(7),
+                            lastUpdate = (double)dbReader.GetInt64(8),
+                            FirstNation = dbReader.GetString(9),
+                            hasPassword = dbReader.GetInt32(10)==1,
+                            hasFounder = dbReader.GetInt32(11)==1,
+                        };
+                    }
+                    catch (Exception e)
+                    {
+                        Logger.Log(LogEventType.Error, $"Error fetching {Region}", e);
+                    }
+                    
+                }
+            }
+
+            return null;
+        }
+
+        public async Task<Region> GetRegionAsync(string Region)
+        {
+            var command = new SQLiteCommand("SELECT * FROM regions WHERE name=@name", connection);
+            command.Parameters.Add(new SQLiteParameter("@name", Region));
+
+            using(var dbReader = await command.ExecuteReaderAsync())
+            {
+                while(dbReader.Read())
+                {
                     return new Region()
                     {
                         Index = dbReader.GetInt64(0),
                         name = dbReader.GetString(1),
-                        NumNations = (int)dbReader.GetInt64(2),
-                        Delegate = dbReader.GetString(3),
-                        Founder = dbReader.GetString(4),
-                        Factbook = dbReader.GetString(5),
-                        lastUpdate = dbReader.GetDouble(6),
-                        FirstNation = dbReader.GetString(7),
-                        hasPassword = dbReader.GetInt32(8)==1,
-                        hasFounder = dbReader.GetInt32(9)==1,
+                        nations = dbReader.GetString(2),
+                        NumNations = (int)dbReader.GetInt64(3),
+                        Delegate = dbReader.GetString(4),
+                        DelegateAuth = dbReader.GetString(5),
+                        Founder = dbReader.GetString(6),
+                        Factbook = dbReader.GetString(7),
+                        lastUpdate = (double)dbReader.GetInt64(8),
+                        FirstNation = dbReader.GetString(9),
+                        hasPassword = dbReader.GetInt32(10)==1,
+                        hasFounder = dbReader.GetInt32(11)==1,
                     };
                 }
             }
@@ -192,47 +263,61 @@ namespace ARCore.Core
             return null;
         }
 
-        // We cache numnations to reduce database calls, since it is a fairly common call.
-        private int cachedNumNations;
+        // Return the number of nations
         public int NumNations()
         {
-            if(cachedNumNations == 0)
+            if(NumNationsCache == 0)
             {
                 var command = new SQLiteCommand("SELECT COUNT(*) FROM nations", connection);
                 using(var dbReader = command.ExecuteReader())
                 {
                     while(dbReader.Read())
                     {
-                        cachedNumNations = (int)dbReader.GetInt64(0);
+                        NumNationsCache = (int)dbReader.GetInt64(0);
                     }
                 }
             }
-            return cachedNumNations;
+            return NumNationsCache;
         }
 
-        // NumRegions is not a very common call, but we cache it anyway
-        private int cachedNumRegions;
+        // Return the number of regions
         public int NumRegions()
         {
-            if(cachedNumRegions == 0)
+            if(NumRegionsCache == 0)
             {
                 var command = new SQLiteCommand("SELECT COUNT(*) FROM regions", connection);
                 using(var dbReader = command.ExecuteReader())
                 {
                     while(dbReader.Read())
                     {
-                        cachedNumRegions = (int)dbReader.GetInt64(0);
+                        NumRegionsCache = (int)dbReader.GetInt64(0);
                     }
                 }
             }
-            return cachedNumRegions;
+            return NumRegionsCache;
+        }
+
+        public List<string> GetRegions()
+        {
+            var command = new SQLiteCommand("SELECT name FROM regions", connection);
+            List<string> Regions = new List<string>();
+            using(var dbReader = command.ExecuteReader())
+            {
+                while(dbReader.Read())
+                {
+                    Regions.Add(dbReader.GetString(0));
+                }
+            }
+            return Regions;
         }
 
         public double TimePerNation(bool Major)
         {
-            if(Major)
-                return MajorUpdate.UpdateLength / NumNations();
-            return MinorUpdate.UpdateLength / NumNations();
+            // Some castings are required to ensure that we get a double
+            double nationCount = NumNations();
+            double UpLength = (double)(Major?MajorUpdate.UpdateLength:MinorUpdate.UpdateLength);
+            
+            return UpLength / nationCount;
         }
 
         public double UpdateLength(bool Major)
