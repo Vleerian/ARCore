@@ -1,9 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Text;
-using System.Drawing;
-
-using Console = Colorful.Console;
 
 namespace ARCore.Helpers
 {
@@ -12,6 +9,7 @@ namespace ARCore.Helpers
         Fatal,
         Error,
         Warning,
+        Done,
         Information,
         Debug,
         Verbose,
@@ -27,27 +25,37 @@ namespace ARCore.Helpers
             if (logEventType > logLevel)
                 return;
 
-            Color statusColor = Color.White;
+            ConsoleColor statusColor;
             switch (logEventType)
             {
                 case LogEventType.Fatal:
                 case LogEventType.Error:
-                    statusColor = Color.Red;
+                    statusColor = ConsoleColor.Red;
                     break;
                 case LogEventType.Warning:
-                    statusColor = Color.Yellow;
+                    statusColor = ConsoleColor.Yellow;
+                    break;
+                case LogEventType.Done:
+                    statusColor = ConsoleColor.Green;
                     break;
                 case LogEventType.Information:
-                    statusColor = Color.Cyan;
+                    statusColor = ConsoleColor.Cyan;
                     break;
                 case LogEventType.Debug:
-                    statusColor = Color.Orange;
+                    statusColor = ConsoleColor.Blue;
+                    break;
+                default:
+                    statusColor = ConsoleColor.White;
                     break;
             }
 
 
             string ExceptionLine = (exception != null) ? $" - {exception.ToString()}" : "";
-            Console.WriteLineFormatted($"[{DateTime.Now.ToString("dd'/'MM'/'yyyy HH:mm:ss")}] <{{0}}> {Message}{ExceptionLine}", statusColor, Color.White, logEventType.ToString().Center(9));
+            Console.Write($"[{DateTime.Now.ToString("dd'/'MM'/'yyyy HH:mm:ss")}] <");
+            Console.ForegroundColor = statusColor;
+            Console.Write(logEventType.ToString().ToUpper().Center(13));
+            Console.ForegroundColor = ConsoleColor.White;
+            Console.Write($"> {Message}{ExceptionLine}\n");
             if (exception != null && logLevel == LogEventType.Debug)
                 Console.WriteLine(exception.StackTrace);
         }

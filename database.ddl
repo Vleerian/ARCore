@@ -1,15 +1,18 @@
 CREATE TABLE "regions" (
-	"index"	INTEGER PRIMARY KEY AUTOINCREMENT,
+	"index"	INTEGER,
 	"name"	TEXT NOT NULL UNIQUE,
+	"nations"	TEXT,
 	"numnations"	INTEGER,
 	"delegate"	TEXT,
+	"delegateauth"	TEXT,
 	"founder"	TEXT,
 	"factbook"	TEXT,
-	"lastupdate"	REAL,
+	"lastupdate"	INTEGER,
 	"firstnation"	TEXT,
 	"passworded"	INTEGER,
-	"founderless"	INTEGER
-);|||CREATE TABLE "nations" (
+	"founderless"	INTEGER,
+	PRIMARY KEY("index" AUTOINCREMENT)
+)|||CREATE TABLE "nations" (
 	"index"	INTEGER PRIMARY KEY AUTOINCREMENT,
 	"name"	TEXT NOT NULL UNIQUE,
 	"region"	TEXT NOT NULL,
