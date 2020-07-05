@@ -10,6 +10,7 @@ using Microsoft.Extensions.DependencyInjection;
 using ARCore.Types;
 using ARCore.Helpers;
 using ARCore.RealTimeTools;
+using ARCore.DataDumpTools;
 
 using Newtonsoft.Json;
 
@@ -19,7 +20,7 @@ namespace ARCore.Core
     /// ARCoordinator is the topmost class that coordinates all the other modules.
     /// It is also what handles all the resources.
     /// </summary>
-    class ARCoordinator
+    public partial class ARCoordinator
     {
         private static int MajorVersion = 0;
         private static int MinorVersion = 2;
@@ -48,6 +49,7 @@ namespace ARCore.Core
                 .AddSingleton<APIHandler>()
                 .AddSingleton<ARData>()
                 .AddSingleton<ARTimer>()
+                .AddSingleton<ARSheet>()
                 .BuildServiceProvider();
         }
 
