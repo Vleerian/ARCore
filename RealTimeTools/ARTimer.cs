@@ -186,15 +186,23 @@ namespace ARCore.RealTimeTools
                 Logger.Log(LogEventType.Warning, $"Region {region} does not exist.");
                 return 0.0;
             }
-            else if(Region.NumNations == 0)
+            else if(Region.Nations == null || Region.NumNations == 0)
             {
                 Logger.Log(LogEventType.Warning, $"Region {region} has no nations.");
                 return 0.0;
             }
-            var Nation = _ARData.GetNation(Region.Nations[0]);
-            double Estimate = Nation.Index * _ARData.TimePerNation(Major);
 
-            return Estimate;
+            var Nation = _ARData.GetNation(Region.FirstNation);
+            if(Nation == null)
+            {
+                Logger.Log(LogEventType.Warning, $"Nation {Region.FirstNation} not found in {region}.");
+                return 0.0;
+            }
+
+            double Index = (double)Nation.Index;
+            double TPN = _ARData.TimePerNation(Major);
+
+            return Index * TPN;
         }
     }
 }
