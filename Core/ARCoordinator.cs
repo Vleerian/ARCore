@@ -30,6 +30,7 @@ namespace ARCore.Core
         private APIHandler API;
         private ARTimer Timer;
         private ARData Data;
+        private ARTelegrams Telegrams;
         public readonly string User;
 
         public readonly AsyncEvent On_Shutdown;
@@ -51,6 +52,7 @@ namespace ARCore.Core
                 .AddSingleton<ARTimer>()
                 .AddSingleton<ARSheet>()
                 .AddSingleton<ARCards>()
+                .AddSingleton<ARTelegrams>()
                 .BuildServiceProvider();
         }
 
@@ -71,12 +73,14 @@ namespace ARCore.Core
                 API = services.GetRequiredService<APIHandler>();
                 Timer = services.GetRequiredService<ARTimer>();
                 Data = services.GetRequiredService<ARData>();
+                Telegrams = services.GetRequiredService<ARTelegrams>();
                 
                 API.User = User;
                 Data.User = User;
 
                 On_Shutdown.Register(API.Shutdown);
                 On_Shutdown.Register(Timer.Shutdown);
+                On_Shutdown.Register(Telegrams.Shutdown);
 
                 MainCallback(services)
                     .GetAwaiter().GetResult();                

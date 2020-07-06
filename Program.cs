@@ -47,17 +47,15 @@ namespace ARCore
         }
 
         private ARCards Cards;
+        private APIHandler API;
+        private ARData Data;
+        private ARTelegrams Telegrams;
 
         public async Task MainAsync(IServiceProvider Services){
             Cards = Services.GetRequiredService<ARCards>();
-
-            var ADCard = await Cards.GetCardAsync("atagait denral", 2);
-
-            Console.WriteLine(ADCard.Name);
-            Console.WriteLine(ADCard.Category);
-            Console.WriteLine(ADCard.Rarity);
-
-            await Task.CompletedTask;
+            API = Services.GetRequiredService<APIHandler>();
+            Data = Services.GetRequiredService<ARData>();
+            Telegrams = Services.GetRequiredService<ARTelegrams>();
         }
     }
 }

@@ -58,47 +58,4 @@ namespace ARCore.Types
         // ARCore added elements
         public int Season;
     }
-
-    /*
-    [Serializable()]
-    public class Market : Card
-    {
-        [XmlElement("NATION")]
-        [XmlElement("NAME")]
-        public string Nation;
-
-        [XmlElement("PRICE")]
-        public float Price;
-
-        [XmlElement("TIMESTAMP")]
-        public long Timestamp;
-
-        [XmlElement("TYPE")]
-        public string MarketType;
-
-        
-        [XmlElement("MARKET_VALUE")]
-        public float MarketValue;
-
-        [XmlElement("TRADES", typeof(Trade))]
-        public List<Trade> Trades;
-
-        [XmlElement("AUCTIONS", typeof(Market))]
-        public List <Market> Auctions;
-        
-        [XmlElement("MARKETS")]
-        public List <Market> Markets;
-    }
-
-    [Serializable()]
-    public class Trade : Market
-    {
-        [XmlElement("BUYER")]
-        public string Buyer;
-
-        [XmlElement("SELLER")]
-        public string Seller;
-    }
-    */
-
 }
