@@ -11,12 +11,12 @@ namespace ARCore.Types
         [XmlElement("DECK", typeof(Card))]
         public List<Card> Deck;
 
-        [XmlElement("INFO", typeof(CardsInfo))]
-        CardsInfo PlayerInfo;
+        [XmlElement("INFO", typeof(CardPlayerInfo))]
+        public CardPlayerInfo PlayerInfo;
     }
 
     [Serializable()]
-    public class CardsInfo
+    public class CardPlayerInfo
     {
         [XmlElement("BANK")]
         public int Bank;
