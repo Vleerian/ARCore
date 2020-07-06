@@ -11,26 +11,9 @@ using System.Xml.Serialization;
 
 namespace ARCore.Helpers
 {
+    // A container class for various class extensions used throughout ARCore
     public static class Extensions
     {
-        //Generic object deserializer
-        public static Task<T> DeserializeObjectAsync<T>(string xml)
-        {
-            XmlSerializer serializer = new XmlSerializer(typeof(T));
-            using var fs = new StringReader(xml);
-            T dump = (T)serializer.Deserialize(fs);
-            return Task.FromResult(dump);
-        }
-
-        //Generic object deserializer
-        public static T DeserializeObject<T>(string xml)
-        {
-            XmlSerializer serializer = new XmlSerializer(typeof(T));
-            using var fs = new StringReader(xml);
-            T dump = (T)serializer.Deserialize(fs);
-            return dump;
-        }
-
         public static bool ValueFitsStandardDeviation(this IEnumerable<double> Object, double Value)
         {
             double average = 0;
@@ -44,9 +27,6 @@ namespace ARCore.Helpers
             //Return if the absolute difference between the value and average is within double the standard deviation
             return Math.Abs(Value - average) < (2 * standardDeviantion);
         }
-
-        public static string SecondsToTime(double time) =>
-            TimeSpan.FromSeconds(time).ToString(@"hh\:mm\:ss");
 
         public static T Shift<T>(this ConcurrentQueue<T> queue, T item)
         {
@@ -66,14 +46,6 @@ namespace ARCore.Helpers
             source.RemoveAt(index > -1 ? index : source.Count - 1);
 
             return item;
-        }
-
-        public static DateTime UnixTimeStampToDateTime(double unixTimeStamp)
-        {
-            // Unix timestamp is seconds past epoch
-            DateTime dtDateTime = new DateTime(1970, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc);
-            dtDateTime = dtDateTime.AddSeconds(unixTimeStamp).ToLocalTime();
-            return dtDateTime;
         }
 
         /// <summary>

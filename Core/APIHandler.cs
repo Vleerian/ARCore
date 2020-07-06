@@ -43,13 +43,13 @@ namespace ARCore.Core
         public async Task<T> GetResultAsync<T>() where T : NSApi
         {
             while (!Done) await Task.Delay(100); //Wait for it to be done
-            return await Extensions.DeserializeObjectAsync<T>(Result);
+            return await HelpersStatic.DeserializeObjectAsync<T>(Result);
         }
 
         public T GetResult<T>() where T : NSApi
         {
             while (!Done) Thread.Sleep(80); //Wait for it to be done
-            return Extensions.DeserializeObject<T>(Result);
+            return HelpersStatic.DeserializeObject<T>(Result);
         }
     
     }
@@ -65,8 +65,6 @@ namespace ARCore.Core
         private SemaphoreSlim webclientMutex;
         private WebClient webClient;
         private ConcurrentQueue<NSAPIRequest> apiQueue;
-        private bool Running;
-        private FileStream Lock;
 
         private readonly IServiceProvider _services;
 
@@ -189,43 +187,33 @@ namespace ARCore.Core
         }
 
         /// <summary>
-        /// Signals the APILoop to shut down
-        /// </summary>
-        public Task Shutdown(object sender)
-        {
-            Running = false;
-            return Task.CompletedTask;
-        }
-
-        /// <summary>
         /// The APILoop that executes NSAPIRequests
         /// </summary>
+        /// <param name="cancellationToken">Cancellation token used to shut the API loop down</param>
         /// <returns></returns>
-        public async Task APILoop()
+        public async void APILoop(CancellationToken cancellationToken)
         {
-            //By putting an exclusive claim on a file, this prevents this instance from being run twice
-            Lock = new FileStream(".running", FileMode.Open, FileAccess.Read, FileShare.None);
-            Running = true;
+            Logger.Log(LogEventType.Information, "APILoop starting up...");
 
-            while(Running)
+            while(!cancellationToken.IsCancellationRequested)
             {
                 //This keeps us under the rate limit
                 await Task.Delay(800);
-                if (!Running) break;
+                if (cancellationToken.IsCancellationRequested) break;
                 if(apiQueue.Count > 0)
                 {
                     //Dequeue and execute an API Request
                     if(apiQueue.TryDequeue(out NSAPIRequest request))
                     {
                         await webclientMutex.WaitAsync();
+                        Logger.Log(LogEventType.Debug, $"Sending request: {request.Uri}");
                         webClient.Headers.Add("user-agent", $"ARCore - doomjaw@hotmail.com | Current User : {User}");
                         request.Run(ref webClient);
                         webclientMutex.Release();
                     }
                 }
             }
-            Lock.Close();
-            File.Delete(".running");
+            Logger.Log(LogEventType.Information, "APILoop stopped.");
         }
     }
 }

@@ -38,13 +38,13 @@ namespace ARCore.DataDumpTools
             ConstantSheet.Cells[1, 2].Value = Data.NumNations();
 
             ConstantSheet.Cells[2, 1].Value = "Major Length";
-            ConstantSheet.Cells[2, 2].Value = Extensions.SecondsToTime(Data.MajorUpdate.UpdateLength);
+            ConstantSheet.Cells[2, 2].Value = HelpersStatic.SecondsToTime(Data.MajorUpdate.UpdateLength);
 
             ConstantSheet.Cells[3, 1].Value = "Time per Nation";
             ConstantSheet.Cells[3, 2].Formula = "B2/B1";
             
             ConstantSheet.Cells[4, 1].Value = "Minor Length";
-            ConstantSheet.Cells[4, 2].Value = Extensions.SecondsToTime(Data.MinorUpdate.UpdateLength);
+            ConstantSheet.Cells[4, 2].Value = HelpersStatic.SecondsToTime(Data.MinorUpdate.UpdateLength);
             
             ConstantSheet.Cells[1, 5].Value = "ARCore 20XX";
             ConstantSheet.Cells[1, 6].Value = $"Ver.{ARCoordinator.Verison}";
@@ -97,9 +97,9 @@ namespace ARCore.DataDumpTools
             TargetSheet.Cells[CellIndex, 5].Formula = $"HYPERLINK(\"https://nationstates.net/region={Region.name}\",\"{Region.Name}\")";
             TargetSheet.Cells[CellIndex, 6].Value = Region.NumNations;
             TargetSheet.Cells[CellIndex, 7].Value = Region.DelegateVotes;
-            TargetSheet.Cells[CellIndex, 8].Value = Extensions.SecondsToTime(Timer.BadEstimate(Region.Name, false));
-            TargetSheet.Cells[CellIndex, 9].Value = Extensions.SecondsToTime(Timer.BadEstimate(Region.Name, true));
-            TargetSheet.Cells[CellIndex, 10].Value = Extensions.SecondsToTime(Region.LastUpdate);
+            TargetSheet.Cells[CellIndex, 8].Value = HelpersStatic.SecondsToTime(Timer.BadEstimate(Region.Name, false));
+            TargetSheet.Cells[CellIndex, 9].Value = HelpersStatic.SecondsToTime(Timer.BadEstimate(Region.Name, true));
+            TargetSheet.Cells[CellIndex, 10].Value = HelpersStatic.SecondsToTime(Region.LastUpdate);
             if(Region.Embassies != null && Region.Embassies.Length > 0)
                 TargetSheet.Cells[CellIndex, 11].Value = string.Join(',', Region.Embassies);
             TargetSheet.Cells[CellIndex, 12].Value = Region.Factbook;

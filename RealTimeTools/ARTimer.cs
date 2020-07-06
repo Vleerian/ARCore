@@ -21,7 +21,6 @@ namespace ARCore.RealTimeTools
         public readonly double UpdateLength;
         public double UpdateStart;
         private long LastTimestamp;
-        bool Running;
 
         private readonly IServiceProvider _services;
         private readonly ARData _ARData;
@@ -46,23 +45,11 @@ namespace ARCore.RealTimeTools
             UpdateStart = 0;
         }
 
-        public async Task Main()
-        {
-            Running = true;
-            while(Running)
-            {
-                await Task.Delay(1600);
-                await GetHappening();
-            }
-        }
-
-        public Task Shutdown(object sender)
-        {
-            Running = false;
-            return Task.CompletedTask;
-        }
-
-        public async Task GetHappening()
+        /// <summary>
+        /// Get the current world happenings and calculate variance based off it
+        /// </summary>
+        /// <param name="Major">True if the tool is being run at major update, false if not</param>
+        public async Task GetHappening(bool Major)
         { 
             _APIHandler.Enqueue(out NSAPIRequest request, HappeningsEndpoint+$";sincetime={LastTimestamp}");
             var Happenings = await request.GetResultAsync<World>();
@@ -71,7 +58,7 @@ namespace ARCore.RealTimeTools
             {
                 if(Happening.Text.Contains("influence in") || Happening.Text.Contains("was ranked in the"))
                 {
-                    VarianceCalc?.InvokeAsync(this, Happening);
+                    VarianceCalc?.InvokeAsync(this, new VarianceCalcEvent(Happening, Major));
                 }
             }
         }
@@ -103,7 +90,7 @@ namespace ARCore.RealTimeTools
                 //Use the happenings-provided timestamp, and zero it to the start of the update.
                 //Since we filter for happenings that can only take place in the update, this operation
                 //will not fire unless mid-update
-                var tmp = Extensions.UnixTimeStampToDateTime(happening.Timestamp);
+                var tmp = HelpersStatic.UnixTimeStampToDateTime(happening.Timestamp);
                 tmp = tmp.AddSeconds(-tmp.Second);
                 tmp = tmp.AddMinutes(-tmp.Minute);
                 tmp = tmp.AddMilliseconds(-tmp.Millisecond);
@@ -116,7 +103,7 @@ namespace ARCore.RealTimeTools
 
             //We calculate the variance by estimating when the nation updates, and subtracting it from actual update time
             double Actual = happening.Timestamp - UpdateStart;
-            double Estimate = Nation.Index * _ARData.TimePerNation(Program.Major);
+            double Estimate = Nation.Index * _ARData.TimePerNation(e.Major);
 
             //VariancePerNation lets us extrapolate, which is more useful than the actual cumulative variance
             double VarianceActual = Actual - Estimate;
@@ -136,9 +123,6 @@ namespace ARCore.RealTimeTools
 
             return Task.CompletedTask;
         }
-
-        public double EstimateUpdate(string region) =>
-            EstimateUpdate(region, Program.Major);
 
         /// <summary>
         /// Estimates the update time + variance of a region, returned as seconds into the update.
@@ -168,9 +152,6 @@ namespace ARCore.RealTimeTools
 
             return TotalVariance + Estimate;
         }
-
-        public double BadEstimate(string region) =>
-            BadEstimate(region, Program.Major);
 
         /// <summary>
         /// 'Bad' Estimate is the estimate purely using the time per nation calculated from the last update

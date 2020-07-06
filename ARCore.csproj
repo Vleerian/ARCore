@@ -17,6 +17,10 @@
     <EmbeddedResource Include="database.ddl">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </EmbeddedResource>
+
+    <EmbeddedResource Include="card_database.ddl">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </EmbeddedResource>
   </ItemGroup>
 
 </Project>

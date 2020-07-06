@@ -85,13 +85,13 @@ namespace ARCore.Core
                 Logger.Log(LogEventType.Debug, "Requesting password regions.");
                 client.Headers.Add("user-agent", $"ARCore - doomjaw@hotmail.com | Current User : {User}");
                 var passwordData = client.DownloadString("https://www.nationstates.net/cgi-bin/api.cgi?q=regionsbytag;tags=password");
-                passwordRegions = Extensions.DeserializeObject<World>(passwordData).Regions
+                passwordRegions = HelpersStatic.DeserializeObject<World>(passwordData).Regions
                     .Replace('_',' ').ToLower().Split(",", StringSplitOptions.RemoveEmptyEntries);
 
                 Logger.Log(LogEventType.Debug, "Requesting founderless regions.");
                 client.Headers.Add("user-agent", $"ARCore - doomjaw@hotmail.com | Current User : {User}");
                 var founderData = client.DownloadString("https://www.nationstates.net/cgi-bin/api.cgi?q=regionsbytag;tags=founderless");
-                founderlessRegions = Extensions.DeserializeObject<World>(founderData).Regions
+                founderlessRegions = HelpersStatic.DeserializeObject<World>(founderData).Regions
                     .Replace('_',' ').ToLower().Split(",", StringSplitOptions.RemoveEmptyEntries);
             }
 

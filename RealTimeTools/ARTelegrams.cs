@@ -1,3 +1,4 @@
+using System.Threading;
 using System;
 using System.Collections.Generic;
 using System.Text;
@@ -12,8 +13,6 @@ namespace ARCore
 {
     class ARTelegrams
     {
-        public bool Running { get; private set; }
-
         public string ClientKey;
 
         public const int RecruitmentLimit = 180000;
@@ -33,6 +32,7 @@ namespace ARCore
         {
             API = services.GetRequiredService<APIHandler>();
             Services = services;
+            ClientKey = string.Empty;
 
             RecruitNew = false;
             RecruitFromSinkers = false;
@@ -47,13 +47,6 @@ namespace ARCore
         public void EnqueueNonRecruitment(string recipient, string templateID, string secretKey) =>
             TelegramQueue.Enqueue(new TelegramRequest(TelegramType.NonRecruitment, recipient, templateID, ClientKey, secretKey));
 
-        public Task Shutdown(object sender)
-        {
-            TelegramQueue.Clear();
-            Running = false;
-            return Task.CompletedTask;
-        }
-
         public void SendTask(string Result)
         {
             if (Result.ToLower().Contains("queued"))
@@ -62,16 +55,25 @@ namespace ARCore
                 Logger.Log(LogEventType.Error, "Failed to queue message.");
         }
 
-        public async Task TelegramLoop()
+        public async void TelegramLoop(CancellationToken cancellationToken)
         {
-            Running = true;
+            // Start with the longest TG delay to ensure rate limit compliance
             await Task.Delay(RecruitmentLimit);
-            while (Running)
+            while (!cancellationToken.IsCancellationRequested)
             {
+                // Wait until the next telegram can be set
                 while (DateTime.Now < NextTelegramTime)
+                {
                     await Task.Delay(1000);
+                    // If cancellation was requested, break out
+                    if(cancellationToken.IsCancellationRequested)
+                        break;
+                }
+
                 if(TelegramQueue.Count > 0)
                 {
+                    if(ClientKey == string.Empty)
+                        throw new ApplicationException("No client key supplied.");
                     TelegramRequest tg = TelegramQueue.Dequeue();
                     if (tg.Type == TelegramType.Recruitment)
                         NextTelegramTime = DateTime.Now.AddMilliseconds(RecruitmentLimit);

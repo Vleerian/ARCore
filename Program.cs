@@ -1,4 +1,5 @@
-﻿using System;
+﻿using System.Threading;
+using System;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -15,8 +16,6 @@ namespace ARCore
 {
     class Program
     {
-        public static bool Major;
-
         public class Options
         {
             [Option('n', "nation_dump", Required = false, Default = "nations.xml.gz", HelpText ="The nation data dump file to use.")]
@@ -41,9 +40,9 @@ namespace ARCore
             Console.WriteLine("https://www.nationstates.net/pages/api.html");
             Console.WriteLine("======================================================");
 
-            Program.Major = true;
             Logger.logLevel = LogEventType.Verbose;
-            new ARCoordinator("Atagait Denral", "nations.xml.gz", "regions.xml.gz").Run(new Program().MainAsync);
+            new ARCoordinator("Atagait Denral", true)
+                .Run(new Program().MainAsync);
         }
 
         private ARCards Cards;
@@ -51,11 +50,23 @@ namespace ARCore
         private ARData Data;
         private ARTelegrams Telegrams;
 
-        public async Task MainAsync(IServiceProvider Services){
+        const string PlayerInfoEnd = "https://www.nationstates.net/cgi-bin/api.cgi?q=cards+info;nationname=";
+        const string PlayerDeckEnd = "https://www.nationstates.net/cgi-bin/api.cgi?q=cards+deck;nationname=";
+
+        public async Task MainAsync(IServiceProvider Services, CancellationToken cancellationToken){
             Cards = Services.GetRequiredService<ARCards>();
             API = Services.GetRequiredService<APIHandler>();
             Data = Services.GetRequiredService<ARData>();
             Telegrams = Services.GetRequiredService<ARTelegrams>();
+
+            API.Enqueue(out NSAPIRequest PlayerInfo, PlayerInfoEnd + "20XX");
+            API.Enqueue(out NSAPIRequest PlayerDeck, PlayerDeckEnd + "20XX");
+            while(!PlayerInfo.Done && !PlayerDeck.Done);
+
+            var Player = await PlayerInfo.GetResultAsync<CardsAPI>();
+            var Deck = await PlayerInfo.GetResultAsync<CardMarket>();
+
+            Console.WriteLine("Done...");
         }
     }
 }

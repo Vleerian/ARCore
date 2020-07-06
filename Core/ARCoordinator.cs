@@ -1,4 +1,5 @@
-﻿using System;
+﻿using System.Threading;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -22,25 +23,27 @@ namespace ARCore.Core
     /// </summary>
     public partial class ARCoordinator
     {
-        private static int MajorVersion = 0;
-        private static int MinorVersion = 2;
-        private static int PatchNumber = 0;
-        public static string Verison => $"{MajorVersion}.{MinorVersion}.{PatchNumber}";
+        public const string Verison = "0.4.0";
 
         private APIHandler API;
         private ARTimer Timer;
         private ARData Data;
         private ARTelegrams Telegrams;
-        public readonly string User;
 
+        public readonly string User;
+        public readonly bool Major;
+
+        private CancellationTokenSource ShutdownToken;
         public readonly AsyncEvent On_Shutdown;
 
         public bool Running;
 
-        public ARCoordinator(string user, string NationDump, string RegionDump)
+        public ARCoordinator(string user, bool major)
         {
+            ShutdownToken = new CancellationTokenSource();
             Logger.Log(LogEventType.Verbose, "Initializing ARCoordinator");
             User = user;
+            Major = major;
             On_Shutdown = new AsyncEvent();
         }
 
@@ -64,26 +67,32 @@ namespace ARCore.Core
         }
 
         // Wraps your async main and provides services
-        public void Run(Func<IServiceProvider, Task> MainCallback)
+        public void Run(Func<IServiceProvider, CancellationToken, Task> MainCallback)
         {
             Logger.logLevel = LogEventType.Debug;
 
             using(var services = ConfigureServices())
             {
+                // Get references to all the services we'll need to configure
                 API = services.GetRequiredService<APIHandler>();
                 Timer = services.GetRequiredService<ARTimer>();
                 Data = services.GetRequiredService<ARData>();
                 Telegrams = services.GetRequiredService<ARTelegrams>();
                 
+                // Configure all our relevant services
                 API.User = User;
                 Data.User = User;
 
-                On_Shutdown.Register(API.Shutdown);
-                On_Shutdown.Register(Timer.Shutdown);
-                On_Shutdown.Register(Telegrams.Shutdown);
+                // Boot up the API and Telegram loops
+                API.APILoop(ShutdownToken.Token);
+                Telegrams.TelegramLoop(ShutdownToken.Token);
+                
+                // Launch the Main callback
+                MainCallback(services, ShutdownToken.Token)
+                    .GetAwaiter().GetResult();
 
-                MainCallback(services)
-                    .GetAwaiter().GetResult();                
+                // Once the main callback is complete, shut down
+                ShutdownToken.Cancel();
             }
         }
     }
