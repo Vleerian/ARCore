@@ -6,12 +6,6 @@ using System.Xml.Serialization;
 
 namespace ARCore.Types
 {   
-    public class CardPair
-    {
-        public Card Season1;
-        public Card Season2;
-    }
-
     [Serializable()]
     public class Trophy
     {
@@ -60,6 +54,9 @@ namespace ARCore.Types
 
         [XmlElement("CARDCATEGORY")]
         public string Rarity;
+
+        // ARCore added elements
+        public int Season;
     }
 
     /*

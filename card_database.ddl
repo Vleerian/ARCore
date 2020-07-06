@@ -1,7 +1,7 @@
 CREATE TABLE "cards" (
     "index"         INTEGER,
 	"season"	    INTEGER,
-	"name"	        TEXT NOT NULL UNIQUE,
+	"name"	        TEXT,
 	"type"	        TEXT,
 	"motto"	        TEXT,
 	"category"	    TEXT,

@@ -2,6 +2,7 @@
 using System.IO;
 using System.Collections.Generic;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Xml.Serialization;
 using ARCore.Types;
 using System.IO.Compression;
@@ -140,6 +141,13 @@ namespace ARCore.Core
             }
             else
                 throw new ArgumentException("Invalid data-dump file. Must be an XML file, or GZipped XML file.");
+
+            if(typeof(T) == typeof(CardsDataDump))
+            {
+                // NS did not use CDATA tags for mottos, which can contain XML special characters.
+                // Because of this nastiness, some terribleness is required.
+                RawXML = Regex.Replace(RawXML, @"<MOTTO>(.*)</MOTTO>", "<MOTTO><![CDATA[$1]]></MOTTO>");
+            }
 
             //Deserialize the XML into the DataDump object
             XmlSerializer serializer = new XmlSerializer(typeof(T));
