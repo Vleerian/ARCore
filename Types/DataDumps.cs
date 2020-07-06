@@ -31,4 +31,21 @@ namespace ARCore.Types
         [XmlElement("NATION", typeof(Nation))]
         public List<Nation> Nations;
     }
+
+    [Serializable()]
+    public class Set
+    {
+        [XmlElement("SEASON", typeof(int))]
+        public int Season;
+
+        [XmlElement("CARD")]
+        public List<Card> Cards;
+    }
+
+    [XmlRoot("CARDS")]
+    public class CardsDataDump : DataDump
+    {
+        [XmlElement("SET", typeof(Set))]
+        public Set CardSet;
+    }
 }

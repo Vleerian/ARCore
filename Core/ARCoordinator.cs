@@ -50,6 +50,7 @@ namespace ARCore.Core
                 .AddSingleton<ARData>()
                 .AddSingleton<ARTimer>()
                 .AddSingleton<ARSheet>()
+                .AddSingleton<ARCards>()
                 .BuildServiceProvider();
         }
 

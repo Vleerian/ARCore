@@ -54,6 +54,9 @@ namespace ARCore.Core
             MajorUpdate = updateData["major"];
             MinorUpdate = updateData["minor"];
 
+            // TODO: Create a helper function to set up database
+            // It should take `string database_structure_file, `string database_name`
+            // And return a SQLiteConnection
             Logger.Log(LogEventType.Information, "Building WorldData Database, this may take several minutes.");
 
             var DBName = DateTime.Now.ToString("MM-dd-yy")+"_WorldData.db";
