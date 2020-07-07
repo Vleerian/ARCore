@@ -30,6 +30,13 @@ namespace ARCore.DataDumpTools
         ARData Data;
         APIHandler API;
         
+        const string PlayerInfoEnd = "https://www.nationstates.net/cgi-bin/api.cgi?q=cards+info;nationname=";
+        const string PlayerDeckEnd = "https://www.nationstates.net/cgi-bin/api.cgi?q=cards+deck;nationname=";
+        const string CardMarketEnd = "https://www.nationstates.net/cgi-bin/api.cgi?q=card+markets;";
+        const string CardTradesEnd = "https://www.nationstates.net/cgi-bin/api.cgi?q=card+trades;";
+        const string AllAuctionsEnd = "https://www.nationstates.net/cgi-bin/api.cgi?q=cards+auctions";
+        const string AllTradesEnd = "https://www.nationstates.net/cgi-bin/api.cgi?q=cards+trades";
+
         private SQLiteConnection connection;
 
         public ARCards(IServiceProvider services){
@@ -38,6 +45,9 @@ namespace ARCore.DataDumpTools
             API = Services.GetRequiredService<APIHandler>();
         }
 
+        /// <summary>
+        /// Initializes the cards database, and sets it up if it has not been configured piror
+        /// </summary>
         public async Task InitializeDB()
         {
             Logger.Log(LogEventType.Information, "Building CardData Database, this may take several minutes.");
@@ -80,16 +90,47 @@ namespace ARCore.DataDumpTools
             await Command.ExecuteNonQueryAsync();
         }
 
-        const string CardsEndpoint = "https://www.nationstates.net/cgi-bin/api.cgi?q=cards+deck+info;nationname=";
-        public async Task<CardsAPI> GetPlayerInfo(string NationName)
+        /// <summary>
+        /// Shorthand method to retrieve player cards information
+        /// </summary>
+        /// <param name="NationName">The nation you want cards info for</param>
+        public async Task<CardsAPI> GetPlayerInfoAsync(string NationName)
         {
-            API.Enqueue(out NSAPIRequest Request, CardsEndpoint+NationName);
+            API.Enqueue(out NSAPIRequest Request, PlayerInfoEnd+NationName);
             return await Request.GetResultAsync<CardsAPI>();
         }
 
-        public Card GetCard(string CardName, int Season) =>
-            GetCardAsync(CardName, Season).GetAwaiter().GetResult();
+        /// <summary>
+        /// Shorthand method to retrieve player deck information
+        /// </summary>
+        /// <param name="NationName">The nation you want deck info for</param>
+        public async Task<CardsAPI> GetPlayerDeckInfoASync(string NationName)
+        {
+            API.Enqueue(out NSAPIRequest Request, PlayerDeckEnd+NationName);
+            return await Request.GetResultAsync<CardsAPI>();
+        }
 
+        /// <summary>
+        /// Shorthand method to retrieve market info for a card
+        /// </summary>
+        /// <param name="CardName">The name of the card you want info about</param>
+        /// <param name="Season">The season that card is in</param>
+        /// <returns></returns>
+        public async Task<CardMarket> GetCardMarketAsync(string CardName, int Season)
+        {
+            var Card = await GetCardAsync(CardName, Season);
+            if(Card == null)
+                return null;
+            API.Enqueue(out NSAPIRequest Request, CardMarketEnd+$"cardid={Card.ID};season={Season}");
+            return await Request.GetResultAsync<CardMarket>();
+        }
+
+        /// <summary>
+        /// Retrieves card information from the database, limited to one season
+        /// </summary>
+        /// <param name="CardName">The card you want information about</param>
+        /// <param name="Season">What season to look for</param>
+        /// <returns>The specific card retrieved, or null if none found</returns>
         public async Task<Card> GetCardAsync(string CardName, int Season)
         {
             if(connection == null)
@@ -128,9 +169,12 @@ namespace ARCore.DataDumpTools
             return null;
         }
 
-        public Card[] GetCard(string CardName) =>
-            GetCardAsync(CardName).GetAwaiter().GetResult();
-
+        /// <summary>
+        /// Retrieves card information from the database
+        /// </summary>
+        /// <param name="CardName">The card you want information about</param>
+        /// <param name="Season">What season to look for</param>
+        /// <returns>An array of retrieved cards, an empty array if none are found</returns>
         public async Task<Card[]> GetCardAsync(string CardName)
         {
             if(connection == null)
@@ -170,5 +214,37 @@ namespace ARCore.DataDumpTools
             }
             return cards.ToArray();
         }
+
+        # region Paper_Thin_Sync_Wrappers
+        /// <summary>
+        /// See: Async version
+        /// </summary>
+        public CardsAPI GetPlayerInfo(string NationName) =>
+            GetPlayerInfoAsync(NationName).GetAwaiter().GetResult();
+
+        /// <summary>
+        /// See: Async version
+        /// </summary>
+        public CardsAPI GetPlayerDeckInfo(string NationName) =>
+            GetPlayerDeckInfoASync(NationName).GetAwaiter().GetResult();
+
+        /// <summary>
+        /// See: Async version
+        /// </summary>
+        public CardMarket GetCardMarket(string CardName, int Season) =>
+            GetCardMarketAsync(CardName, Season).GetAwaiter().GetResult();
+
+        /// <summary>
+        /// See: Async version
+        /// </summary>
+        public Card GetCard(string CardName, int Season) =>
+            GetCardAsync(CardName, Season).GetAwaiter().GetResult();
+
+        /// <summary>
+        /// See: Async version
+        /// </summary>
+        public Card[] GetCard(string CardName) =>
+            GetCardAsync(CardName).GetAwaiter().GetResult();
+        # endregion
     }
 }
