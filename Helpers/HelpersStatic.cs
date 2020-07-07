@@ -9,6 +9,9 @@ using System.Threading.Tasks;
 using System.Xml;
 using System.Xml.Serialization;
 
+using System.Data.SQLite;
+using System.Data.Common;
+
 namespace ARCore.Helpers
 {
     // A container for helper methods used throughout ARCore
@@ -41,6 +44,36 @@ namespace ARCore.Helpers
             DateTime dtDateTime = new DateTime(1970, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc);
             dtDateTime = dtDateTime.AddSeconds(unixTimeStamp).ToLocalTime();
             return dtDateTime;
+        }
+
+        /// <summary>
+        /// Sets up a SQLLite database, and returns a connection to it
+        /// Requires {DatabaseName.ddl} to exist for setup
+        /// </summary>
+        /// <param name="DatabaseName">The extensionless name of the database to connect to</param>
+        /// <returns>True if the database already existed</returns>
+        public static bool CongfigureDatabase(string DatabaseName, out SQLiteConnection connection)
+        {
+            Logger.Log(LogEventType.Information, $"Connecting to {DatabaseName}");
+            bool setup = !File.Exists(DatabaseName);
+            connection = new SQLiteConnection($"Data Source={DatabaseName}.db;Version=3;").OpenAndReturn();
+            if(!setup)
+            {
+                Logger.Log(LogEventType.Information, $"Connected to {DatabaseName}");
+                return true;
+            }
+
+            Logger.Log(LogEventType.Information, $"Setting up {DatabaseName}");
+            string DatabaseSetup = File.ReadAllText("./{DatabaseName}.ddl");
+            string[] Queries = DatabaseSetup.Split("|||");
+            using(var transaction = connection.BeginTransaction())
+            {
+                foreach(string Query in Queries)
+                new SQLiteCommand(Query, connection, transaction).ExecuteNonQuery();
+                transaction.Commit();
+            }
+
+            return false;
         }
     }
 }

@@ -24,66 +24,45 @@ namespace ARCore.DataDumpTools
     [XmlRoot("CARDS")]
     public class ARCards
     {
+        // TODO: Find a way to dynamically determine how many seasons of cards there are.
+        public const int Card_Seasons = 2;
         IServiceProvider Services;
         ARData Data;
         APIHandler API;
         
-        private readonly SQLiteConnection connection;
+        private SQLiteConnection connection;
 
         public ARCards(IServiceProvider services){
             Services = services;
             Data = Services.GetRequiredService<ARData>();
             API = Services.GetRequiredService<APIHandler>();
+        }
 
-            // Once this uses a database, this terrible code will be gone
-            // But in the meantime, this works.
-
+        public async Task InitializeDB()
+        {
             Logger.Log(LogEventType.Information, "Building CardData Database, this may take several minutes.");
 
-            var DBName = "CardData.db";
-            bool setup = !File.Exists(DBName);
-            connection = new SQLiteConnection($"Data Source={DBName};Version=3;").OpenAndReturn();
-            if(!setup)
-            {
-                Logger.Log(LogEventType.Information, "Connected to CardData Database");
+            if(HelpersStatic.CongfigureDatabase("CardData", out connection))
                 return;
-            }
-
-            Logger.Log(LogEventType.Information, "Setting up CardData Database");
-            string DatabaseSetup = File.ReadAllText("./card_database.ddl");
-            string[] Queries = DatabaseSetup.Split("|||");
-            using(var transaction = connection.BeginTransaction())
-            {
-                foreach(string Query in Queries)
-                new SQLiteCommand(Query, connection, transaction).ExecuteNonQuery();
-                transaction.Commit();
-            }
 
             // Load the card data dumps
-            Logger.Log(LogEventType.Debug, "Parsing Cardset 1");
-            var CardSet_1 = APIHandler.ParseDataDump<CardsDataDump>("cardlist_S1.xml.gz");
-
-            Logger.Log(LogEventType.Debug, "Parsing Cardset 2");
-            var CardSet_2 = APIHandler.ParseDataDump<CardsDataDump>("cardlist_S2.xml.gz");
-
-            // Build the cards database
-            Logger.Log(LogEventType.Information, "Building CardData. This may take some time.");
-            using(var transaction = connection.BeginTransaction())
+            for(int i = 1; i < Card_Seasons+1; i++)
             {
-                // Create tasks to insert the cards into the database
-                var Set1Tasks = CardSet_1.CardSet.Cards
-                    .Select(Card => SQLInsertCard(Card, CardSet_1.CardSet.Season, transaction));
-                var Set2Tasks = CardSet_2.CardSet.Cards
-                    .Select(Card => SQLInsertCard(Card, CardSet_2.CardSet.Season, transaction));
-                
-                // Combine the two sets of tasks
-                Set1Tasks.ToList().AddRange(Set2Tasks);
+                Logger.Log(LogEventType.Debug, $"Parsing Cardset {i}");
+                var CardSet = APIHandler.ParseDataDump<CardsDataDump>($"cardlist_S{i}.xml.gz");
 
-                // Run and await all the tasks
-                Task.WhenAll(Set1Tasks)
-                    .GetAwaiter().GetResult();
+                Logger.Log(LogEventType.Information, $"Building CardData for set {i}. This may take some time.");
+                using(var transaction = connection.BeginTransaction())
+                {
+                    // Create tasks to insert the cards into the database
+                    var Tasks = CardSet.CardSet.Cards
+                        .Select(Card => SQLInsertCard(Card, CardSet.CardSet.Season, transaction));
 
-                transaction.Commit();
+                    // Run and await all the tasks
+                    await Task.WhenAll(Tasks);
+
+                    transaction.Commit();
+                }
             }
         }
 
@@ -113,6 +92,9 @@ namespace ARCore.DataDumpTools
 
         public async Task<Card> GetCardAsync(string CardName, int Season)
         {
+            if(connection == null)
+                throw new ApplicationException("No database connection established.");
+
             // Format the input, and make a query for the card
             CardName = CardName.ToLower().Replace(' ', '_');
             string SQL = "SELECT * FROM `cards` WHERE name=@name AND season=@season;";
@@ -151,6 +133,9 @@ namespace ARCore.DataDumpTools
 
         public async Task<Card[]> GetCardAsync(string CardName)
         {
+            if(connection == null)
+                throw new ApplicationException("No database connection established.");
+
             // Format the input, and make a query for the card
             CardName = CardName.ToLower().Replace(' ', '_');
             string SQL = "SELECT * FROM `cards` WHERE name=@name";
@@ -158,7 +143,7 @@ namespace ARCore.DataDumpTools
             command.Parameters.AddWithValue("@name", CardName);
 
             // In order to be forward-compatible, we return a list (casted later to an array)
-            // This ensures that additional seasons of cards don't require maintenance on ARCore's part
+            // This ensures that additional seasons of cards require minimal maintenance on ARCore's part
             List<Card> cards = new List<Card>();
             using(var dbReader = await command.ExecuteReaderAsync())
             {

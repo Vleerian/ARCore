@@ -20,15 +20,18 @@ namespace ARCore.Core
 {
     public class ARData
     {
-        private readonly IServiceProvider _services;
-        private readonly APIHandler _APIHandler;
+        const string RegionSQL = "INSERT INTO regions (name, nations, numnations, delegate, delegateauth, founder, factbook, lastupdate, firstnation, passworded, founderless) VALUES (@name, @nations, @numnations, @delegate, @delegateauth, @founder, @factbook, @lastupdate, @firstnation, @passworded, @founderless)";
+        const string NationSQL = "INSERT INTO nations (name, region, endorsements, WAStatus) VALUES (@name, @region, @endorsements, @WAStatus)";
+
+        private readonly IServiceProvider services;
+        private readonly APIHandler API;
 
         public string User;
 
         public readonly UpdateDerivation MajorUpdate;
         public readonly UpdateDerivation MinorUpdate;
 
-        private readonly SQLiteConnection connection;
+        private SQLiteConnection connection;
 
         // We keep these two cached because they are potentially common calls
         int NumNationsCache;
@@ -38,8 +41,8 @@ namespace ARCore.Core
         {
             Logger.Log(LogEventType.Verbose, "Initializing ARData");
 
-            _services = services;
-            _APIHandler = services.GetRequiredService<APIHandler>();
+            this.services = services;
+            API = services.GetRequiredService<APIHandler>();
 
             NumNationsCache = 0;
             NumRegionsCache = 0;
@@ -53,109 +56,134 @@ namespace ARCore.Core
             }
             MajorUpdate = updateData["major"];
             MinorUpdate = updateData["minor"];
+        }
 
-            // TODO: Create a helper function to set up database
-            // It should take `string database_structure_file, `string database_name`
-            // And return a SQLiteConnection
-            Logger.Log(LogEventType.Information, "Building WorldData Database, this may take several minutes.");
+        /// <summary>
+        /// Inserts a region into the WorldData database
+        /// </summary>
+        /// <param name="region">The region to be inserted</param>
+        /// <param name="connection">The Database connection</param>
+        /// <param name="transaction">The current transaction</param>
+        /// <returns></returns>
+        private async Task InsertRegion(Region region, bool passworded, bool founderless, SQLiteTransaction transaction)
+        {
+            var command = new SQLiteCommand(RegionSQL, connection, transaction);
 
-            var DBName = DateTime.Now.ToString("MM-dd-yy")+"_WorldData.db";
-            bool setup = !File.Exists(DBName);
-            connection = new SQLiteConnection($"Data Source={DBName};Version=3;").OpenAndReturn();
-            if(!setup)
-            {
-                Logger.Log(LogEventType.Information, "Connected to WorldData Database");
-                return;
-            }
+            command.Parameters.AddWithValue("@name", region.Name);
+            command.Parameters.AddWithValue("@nations", region.nations);
+            command.Parameters.AddWithValue("@numnations", region.NumNations);
+            command.Parameters.AddWithValue("@delegate", region.Delegate);
+            command.Parameters.AddWithValue("@delegateauth", region.DelegateAuth);
+            command.Parameters.AddWithValue("@founder", region.Founder);
+            command.Parameters.AddWithValue("@factbook", region.Factbook);
+            command.Parameters.AddWithValue("@lastupdate", (long)region.lastUpdate);
+            command.Parameters.AddWithValue("@firstnation", region.Nations.Length > 0?region.Nations[0]:"");
+            command.Parameters.AddWithValue("@passworded", passworded?1:0);
+            command.Parameters.AddWithValue("@founderless", founderless?1:0);
 
-            Logger.Log(LogEventType.Information, "Setting up WorldData Database");
-            string DatabaseSetup = File.ReadAllText("./database.ddl");
-            string[] Queries = DatabaseSetup.Split("|||");
-            using(var transaction = connection.BeginTransaction())
-            {
-                foreach(string Query in Queries)
-                new SQLiteCommand(Query, connection, transaction).ExecuteNonQuery();
-                transaction.Commit();
-            }
+            await command.ExecuteNonQueryAsync();
+        }
 
-            Logger.Log(LogEventType.Verbose, "Performing startup API requests.");
+        
+        private async Task InsertNation(Nation nation,  SQLiteTransaction transaction)
+        {
+            var command = new SQLiteCommand(NationSQL, connection, transaction);
+
+            command.Parameters.Add(new SQLiteParameter("@name", nation.Name));
+            command.Parameters.Add(new SQLiteParameter("@region", nation.Region));
+            command.Parameters.Add(new SQLiteParameter("@endorsements", nation.Endorsements.Split(":").Length));
+            command.Parameters.Add(new SQLiteParameter("@WAstatus", nation.WAStatus));
+
+            await command.ExecuteNonQueryAsync();
+        }
+
+        /// <summary>
+        /// Processes the supplied data dumps and inserts them into the conencted database
+        /// </summary>
+        /// <param name="nationDump"></param>
+        /// <param name="regionDump"></param>
+        /// <returns></returns>
+        public async Task ProcessDumps(NationDataDump nationDump, RegionDataDump regionDump)
+        {
+            if(connection == null)
+                throw new ApplicationException("No database connection established.");
+            
+            Logger.Log(LogEventType.Verbose, "Fetching password and founderless regions.");
             string[] passwordRegions;
             string[] founderlessRegions;
-            using (var client = new WebClient()){
-                Logger.Log(LogEventType.Debug, "Requesting password regions.");
-                client.Headers.Add("user-agent", $"ARCore - doomjaw@hotmail.com | Current User : {User}");
-                var passwordData = client.DownloadString("https://www.nationstates.net/cgi-bin/api.cgi?q=regionsbytag;tags=password");
-                passwordRegions = HelpersStatic.DeserializeObject<World>(passwordData).Regions
-                    .Replace('_',' ').ToLower().Split(",", StringSplitOptions.RemoveEmptyEntries);
+            {
+                //Scoped to dispose of the NSAPIRequest objects once we're done with them
+                API.Enqueue(out NSAPIRequest PasswordRequest, "https://www.nationstates.net/cgi-bin/api.cgi?q=regionsbytag;tags=password");
+                API.Enqueue(out NSAPIRequest FounderlessRequest, "https://www.nationstates.net/cgi-bin/api.cgi?q=regionsbytag;tags=founderless");
+                while(!PasswordRequest.Done && !FounderlessRequest.Done);
 
-                Logger.Log(LogEventType.Debug, "Requesting founderless regions.");
-                client.Headers.Add("user-agent", $"ARCore - doomjaw@hotmail.com | Current User : {User}");
-                var founderData = client.DownloadString("https://www.nationstates.net/cgi-bin/api.cgi?q=regionsbytag;tags=founderless");
-                founderlessRegions = HelpersStatic.DeserializeObject<World>(founderData).Regions
+                var PasswordData = await PasswordRequest.GetResultAsync<World>();
+                var FounderlessData = await PasswordRequest.GetResultAsync<World>();
+
+                passwordRegions = PasswordData.Regions
+                    .Replace('_',' ').ToLower().Split(",", StringSplitOptions.RemoveEmptyEntries);
+                founderlessRegions = FounderlessData.Regions
                     .Replace('_',' ').ToLower().Split(",", StringSplitOptions.RemoveEmptyEntries);
             }
 
-            Logger.Log(LogEventType.Information, "Parsing region data dump, please wait...");
-            RegionDataDump regionData;
-            string RDataFilename = DateTime.Now.ToString("MM-dd-yy")+"regions.xml.gz";
-            if(!File.Exists(RDataFilename))
-                regionData = _APIHandler.DownloadDataDump<RegionDataDump>().GetAwaiter().GetResult();
-            else
-                regionData = APIHandler.ParseDataDump<RegionDataDump>(RDataFilename);
-            
             Logger.Log(LogEventType.Information, "Building reigons Table.");
             using(var transaction = connection.BeginTransaction()){
-                foreach(Region region in regionData.Regions)
-                {
-                    var command = new SQLiteCommand("INSERT INTO regions (name, nations, numnations, delegate, delegateauth, founder, factbook, lastupdate, firstnation, passworded, founderless) VALUES (@name, @nations, @numnations, @delegate, @delegateauth, @founder, @factbook, @lastupdate, @firstnation, @passworded, @founderless)");
-                    command.Connection = connection;
-                    command.Transaction = transaction;
-
-                    command.Parameters.AddWithValue("@name", region.Name);
-                    command.Parameters.AddWithValue("@nations", region.nations);
-                    command.Parameters.AddWithValue("@numnations", region.NumNations);
-                    command.Parameters.AddWithValue("@delegate", region.Delegate);
-                    command.Parameters.AddWithValue("@delegateauth", region.DelegateAuth);
-                    command.Parameters.AddWithValue("@founder", region.Founder);
-                    command.Parameters.AddWithValue("@factbook", region.Factbook);
-                    command.Parameters.AddWithValue("@lastupdate", (long)region.lastUpdate);
-                    command.Parameters.AddWithValue("@firstnation", region.Nations.Length > 0?region.Nations[0]:"");
-                    command.Parameters.AddWithValue("@passworded", passwordRegions.Any(R=>R==region.Name)?1:0);
-                    command.Parameters.AddWithValue("@founderless", founderlessRegions.Any(R=>R==region.Name)?1:0);
-                    command.ExecuteNonQuery();
+                var tasks = regionDump.Regions.Select(region => {
+                    // Determine if the region is passworded & founderless
+                    bool passworded = passwordRegions.Any(R=>R==region.Name);
+                    bool founderless = founderlessRegions.Any(R=>R==region.Name);
+                    // Return the insert task
+                    return InsertRegion( region, passworded, founderless, transaction );
                 }
+                );
+                await Task.WhenAll(tasks);
                 transaction.Commit();
             }
 
-            Logger.Log(LogEventType.Information, "Parsing nation data dump, please wait...");
-            NationDataDump nationData;
-            string NDataFilename = DateTime.Now.ToString("MM-dd-yy")+"nations.xml.gz";
-            if(!File.Exists(NDataFilename))
-                nationData = _APIHandler.DownloadDataDump<NationDataDump>().GetAwaiter().GetResult();
-            else
-                nationData = APIHandler.ParseDataDump<NationDataDump>(NDataFilename);
-            
             Logger.Log(LogEventType.Information, "Building nations Table.");
             using(var transaction = connection.BeginTransaction()){
-                foreach(Nation nation in nationData.Nations)
-                {
-                    var command = new SQLiteCommand("INSERT INTO nations (name, region, endorsements, WAStatus) VALUES (@name, @region, @endorsements, @WAStatus)");
-                    command.Connection = connection;
-                    command.Transaction = transaction;
-                    
-                    command.Parameters.Add(new SQLiteParameter("@name", nation.Name));
-                    command.Parameters.Add(new SQLiteParameter("@region", nation.Region));
-                    command.Parameters.Add(new SQLiteParameter("@endorsements", nation.Endorsements.Split(":").Length));
-                    command.Parameters.Add(new SQLiteParameter("@WAstatus", nation.WAStatus));
-                    
-                    command.ExecuteNonQuery();
-                }
+                var Tasks = nationDump.Nations.Select(Nation => InsertNation( Nation, transaction ));
+                await Task.WhenAll(Tasks);
                 transaction.Commit();
             }
         }
 
+        /// <summary>
+        /// Initializes a new WorldData Database using the nationstates data dumps
+        /// </summary>
+        public async void InitializeDB()
+        {
+            var DBName = DateTime.Now.ToString("MM-dd-yy")+"_WorldData";
+            // If there is a pre-existing database, return
+            if(HelpersStatic.CongfigureDatabase(DBName, out connection))
+                return;
+
+            Logger.Log(LogEventType.Information, "Parsing region data dump, please wait...");
+            RegionDataDump regionData = await API.DownloadDataDump<RegionDataDump>();
+
+            Logger.Log(LogEventType.Information, "Parsing nation data dump, please wait...");
+            NationDataDump nationData = await API.DownloadDataDump<NationDataDump>();
+            
+            await ProcessDumps(nationData, regionData);
+        }
+
+        /// <summary>
+        /// Connects to a database
+        /// </summary>
+        /// <param name="DBName">The extensionless name of the database you want to connect to</param>
+        /// <returns>True if the database already existed, false otherwise</returns>
+        public bool ConnectToDB(string DBName)
+        {
+            bool Exists = File.Exists($"{DBName}.db");
+            HelpersStatic.CongfigureDatabase(DBName, out connection);
+            return Exists;
+        }
+
         public Nation GetNation(string Nation)
         {
+            if(connection == null)
+                throw new ApplicationException("No database connection established.");
+
             var command = new SQLiteCommand("SELECT * FROM nations WHERE name=@name", connection);
             command.Parameters.Add(new SQLiteParameter("@name", Nation));
 
@@ -178,6 +206,9 @@ namespace ARCore.Core
 
         public async Task<Nation> GetNationAsync(string Nation)
         {
+            if(connection == null)
+                throw new ApplicationException("No database connection established.");
+
             var command = new SQLiteCommand("SELECT * FROM nations WHERE name=@name", connection);
             command.Parameters.Add(new SQLiteParameter("@name", Nation));
 
@@ -201,6 +232,9 @@ namespace ARCore.Core
 
         public Region GetRegion(string Region)
         {
+            if(connection == null)
+                throw new ApplicationException("No database connection established.");
+
             var command = new SQLiteCommand("SELECT * FROM regions WHERE name=@name", connection);
             command.Parameters.Add(new SQLiteParameter("@name", Region));
 
@@ -238,6 +272,9 @@ namespace ARCore.Core
 
         public async Task<Region> GetRegionAsync(string Region)
         {
+            if(connection == null)
+                throw new ApplicationException("No database connection established.");
+
             var command = new SQLiteCommand("SELECT * FROM regions WHERE name=@name", connection);
             command.Parameters.Add(new SQLiteParameter("@name", Region));
 
@@ -269,6 +306,9 @@ namespace ARCore.Core
         // Return the number of nations
         public int NumNations()
         {
+            if(connection == null)
+                throw new ApplicationException("No database connection established.");
+
             if(NumNationsCache == 0)
             {
                 var command = new SQLiteCommand("SELECT COUNT(*) FROM nations", connection);
@@ -286,6 +326,9 @@ namespace ARCore.Core
         // Return the number of regions
         public int NumRegions()
         {
+            if(connection == null)
+                throw new ApplicationException("No database connection established.");
+
             if(NumRegionsCache == 0)
             {
                 var command = new SQLiteCommand("SELECT COUNT(*) FROM regions", connection);
@@ -302,6 +345,9 @@ namespace ARCore.Core
 
         public List<string> GetRegions()
         {
+            if(connection == null)
+                throw new ApplicationException("No database connection established.");
+
             var command = new SQLiteCommand("SELECT name FROM regions", connection);
             List<string> Regions = new List<string>();
             using(var dbReader = command.ExecuteReader())

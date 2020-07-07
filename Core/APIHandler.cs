@@ -163,17 +163,19 @@ namespace ARCore.Core
         public async Task<T> DownloadDataDump<T>() where T : DataDump
         {
             string DumpType = typeof(T) == typeof(RegionDataDump) ? "regions" : "nations";
+            string DumpFilename = DateTime.Now.ToString("MM-dd-yy")+$"{DumpType}.xml.gz";
 
-            if (File.Exists($"{DumpType}.xml.gz"))
+            if (File.Exists(DumpFilename))
             {
-                Logger.Log(LogEventType.Warning, $"Old {DumpType} datadump exists - deleting.");
-                File.Delete($"{DumpType}.xml.gz");
+                Logger.Log(LogEventType.Warning, $"Old {DumpType} datadump exists, ARCore will use existing the existing dump.");
+                return ParseDataDump<T>(DumpFilename);
             }
+
             await webclientMutex.WaitAsync();
-            webClient.DownloadFile($"https://www.nationstates.net/pages/{DumpType}.xml.gz", $"{DateTime.Now.ToString("MM-dd-yy")}-{DumpType}.xml.gz");
+            webClient.DownloadFile($"https://www.nationstates.net/pages/{DumpType}.xml.gz", DumpFilename);
             webclientMutex.Release();
 
-            return ParseDataDump<T>($"{DateTime.Now.ToString("MM-dd-yy")}-{DumpType}.xml.gz");
+            return ParseDataDump<T>(DumpFilename);
         }
 
         /// <summary>
@@ -184,6 +186,21 @@ namespace ARCore.Core
         {
             request = new NSAPIRequest(Endpoint);
             apiQueue.Enqueue(request);
+        }
+
+        /// <summary>
+        /// WARNING: Unmanaged Queries are not rate limited, avoid using them if possible.
+        /// Requests NSAPI and bypasses the API loop - this behavior can put you
+        /// over the rate limit, and use of this function is discouraged.
+        /// </summary>
+        /// <param name="endpoint"></param>
+        /// <returns></returns>
+        public async Task<T> UnmanagedQuery<T>(string endpoint) where T : NSApi
+        {
+            await webclientMutex.WaitAsync();
+            webClient.Headers.Add("user-agent", $"ARCore - doomjaw@hotmail.com | Current User : {User}");
+            var Data = webClient.DownloadString(endpoint);
+            return HelpersStatic.DeserializeObject<T>(Data);
         }
 
         /// <summary>
