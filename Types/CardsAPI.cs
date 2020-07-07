@@ -6,20 +6,27 @@ using System.Xml.Serialization;
 namespace ARCore.Types
 {   
     [XmlRoot("CARDS")]
-    public class CardsAPI : NSApi
+    [Serializable()]
+    public class CardsPlayerInfo : NSApi
     {
-        [XmlElement("DECK", typeof(Card))]
-        public List<Card> Deck;
+        [XmlElement("INFO")]
+        public PlayerInfo PlayerInfo;
+    }
 
-        [XmlElement("INFO", typeof(CardPlayerInfo))]
-        public CardPlayerInfo PlayerInfo;
+    [XmlRoot("CARDS")]
+    [Serializable()]
+    public class CardsDeckInfo : NSApi
+    {
+        [XmlArray("DECK")]
+        [XmlArrayItem("CARD", typeof(DeckEntry))]
+        public List<DeckEntry> Deck;
     }
 
     [Serializable()]
-    public class CardPlayerInfo
+    public class PlayerInfo
     {
         [XmlElement("BANK")]
-        public int Bank;
+        public float Bank;
 
         [XmlElement("DECK_CAPACITY_RAW")]
         public int Deck_Capacity;
@@ -35,5 +42,18 @@ namespace ARCore.Types
 
         [XmlElement("NUM_CARDS")]
         public string CardCount;
+    }
+
+    [Serializable()]
+    public class DeckEntry
+    {
+        [XmlElement("CARDID")]
+        public int CardID;
+
+        [XmlElement("CATEGORY")]
+        public string Rarity;
+
+        [XmlElement("SEASON")]
+        public int Season;
     }
 }

@@ -50,8 +50,6 @@ namespace ARCore.DataDumpTools
         /// </summary>
         public async Task InitializeDB()
         {
-            Logger.Log(LogEventType.Information, "Building CardData Database, this may take several minutes.");
-
             if(HelpersStatic.CongfigureDatabase("CardData", out connection))
                 return;
 
@@ -78,8 +76,9 @@ namespace ARCore.DataDumpTools
 
         public async Task SQLInsertCard(Card card, int season, SQLiteTransaction transaction)
         {
-            string SQL = "INSERT INTO `cards` (season, name, type, motto, category, region, cardcategory) VALUES (@season, @name, @type, @motto, @category, @region, @cardcategory);";
+            string SQL = "INSERT INTO `cards` (cardID, season, name, type, motto, category, region, cardcategory) VALUES (@cardID, @season, @name, @type, @motto, @category, @region, @cardcategory);";
             var Command = new SQLiteCommand(SQL, connection);
+            Command.Parameters.AddWithValue("@cardID", card.ID);
             Command.Parameters.AddWithValue("@season", season);
             Command.Parameters.AddWithValue("@name", card.Name); 
             Command.Parameters.AddWithValue("@type", card.Type);
@@ -91,23 +90,72 @@ namespace ARCore.DataDumpTools
         }
 
         /// <summary>
+        /// A wrapper to clean up initializing cards with DbDataReader
+        /// </summary>
+        Card ReadCard(DbDataReader dbReader) => new Card() {
+            ID       = (int)dbReader.GetInt64(1),
+            Season   = (int)dbReader.GetInt64(2),
+            name     = dbReader.GetString(3),
+            Type     = dbReader.GetString(4),
+            Motto    = dbReader.GetString(5),
+            Category = dbReader.GetString(6),
+            Region   = dbReader.GetString(7),
+            Rarity   = dbReader.GetString(8)
+        };
+
+        /// <summary>
+        /// A wrapper to clean up fetching single cards from the database
+        /// </summary>
+        /// <param name="CardFetchCommand"></param>
+        /// <returns></returns>
+        async Task<Card> FetchOneCard(SQLiteCommand CardFetchCommand)
+        {
+            using(var dbReader = await CardFetchCommand.ExecuteReaderAsync())
+            {
+                while(dbReader.Read())
+                {
+                    return ReadCard(dbReader);
+                }
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// A wrapper to clean up fetching multiple cards from the database
+        /// </summary>
+        /// <param name="CardFetchCommand"></param>
+        /// <returns></returns>
+        async Task<Card[]> FetchCards(SQLiteCommand CardFetchCommand)
+        {
+            List<Card> cards = new List<Card>();
+            using(var dbReader = await CardFetchCommand.ExecuteReaderAsync())
+            {
+                while(dbReader.Read())
+                {
+                    cards.Add(ReadCard(dbReader));
+                }
+            }
+            return cards.ToArray();
+        }
+
+        /// <summary>
         /// Shorthand method to retrieve player cards information
         /// </summary>
         /// <param name="NationName">The nation you want cards info for</param>
-        public async Task<CardsAPI> GetPlayerInfoAsync(string NationName)
+        public async Task<CardsPlayerInfo> GetPlayerInfoAsync(string NationName)
         {
             API.Enqueue(out NSAPIRequest Request, PlayerInfoEnd+NationName);
-            return await Request.GetResultAsync<CardsAPI>();
+            return await Request.GetResultAsync<CardsPlayerInfo>();
         }
 
         /// <summary>
         /// Shorthand method to retrieve player deck information
         /// </summary>
         /// <param name="NationName">The nation you want deck info for</param>
-        public async Task<CardsAPI> GetPlayerDeckInfoASync(string NationName)
+        public async Task<CardsDeckInfo> GetPlayerDeckInfoASync(string NationName)
         {
             API.Enqueue(out NSAPIRequest Request, PlayerDeckEnd+NationName);
-            return await Request.GetResultAsync<CardsAPI>();
+            return await Request.GetResultAsync<CardsDeckInfo>();
         }
 
         /// <summary>
@@ -121,14 +169,25 @@ namespace ARCore.DataDumpTools
             var Card = await GetCardAsync(CardName, Season);
             if(Card == null)
                 return null;
-            API.Enqueue(out NSAPIRequest Request, CardMarketEnd+$"cardid={Card.ID};season={Season}");
+            return await GetCardMarketAsync(Card.ID, Season);
+        }
+
+        /// <summary>
+        /// Shorthand method to retrieve market info for a card
+        /// </summary>
+        /// <param name="CardID">The ID of the card you want info about</param>
+        /// <param name="Season">The season that card is in</param>
+        /// <returns></returns>
+        public async Task<CardMarket> GetCardMarketAsync(int CardID, int Season)
+        {
+            API.Enqueue(out NSAPIRequest Request, CardMarketEnd+$"cardid={CardID};season={Season}");
             return await Request.GetResultAsync<CardMarket>();
         }
 
         /// <summary>
         /// Retrieves card information from the database, limited to one season
         /// </summary>
-        /// <param name="CardName">The card you want information about</param>
+        /// <param name="CardName">The name of the card you want information about</param>
         /// <param name="Season">What season to look for</param>
         /// <returns>The specific card retrieved, or null if none found</returns>
         public async Task<Card> GetCardAsync(string CardName, int Season)
@@ -143,36 +202,32 @@ namespace ARCore.DataDumpTools
             command.Parameters.AddWithValue("@name", CardName);
             command.Parameters.AddWithValue("@season", Season);
 
-            using(var dbReader = await command.ExecuteReaderAsync())
-            {
-                while(dbReader.Read())
-                {
-                    try{
-                        return new Card()
-                        {
-                            Season = (int)dbReader.GetInt64(1),
-                            name = dbReader.GetString(2),
-                            Type = dbReader.GetString(2),
-                            Motto = dbReader.GetString(3),
-                            Category = dbReader.GetString(4),
-                            Region = dbReader.GetString(5),
-                            Rarity = dbReader.GetString(6)
-                        };
-                    }
-                    catch (Exception e)
-                    {
-                        Logger.Log(LogEventType.Error, $"Error fetching {CardName} (S{Season})", e);
-                    }
-                    
-                }
-            }
-            return null;
+            return await FetchOneCard(command);
+        }
+
+        /// <summary>
+        /// Retrieves card information from the database, limited to one season
+        /// </summary>
+        /// <param name="CardName">The ID of the card you want information about</param>
+        /// <param name="Season">What season to look for</param>
+        /// <returns>The specific card retrieved, or null if none found</returns>
+        public async Task<Card> GetCardAsync(int CardID, int Season)
+        {
+            if(connection == null)
+                throw new ApplicationException("No database connection established.");
+
+            string SQL = "SELECT * FROM `cards` WHERE cardID=@cardID AND season=@season;";
+            var command = new SQLiteCommand(SQL, connection);
+            command.Parameters.AddWithValue("@cardID", CardID);
+            command.Parameters.AddWithValue("@season", Season);
+
+            return await FetchOneCard(command);
         }
 
         /// <summary>
         /// Retrieves card information from the database
         /// </summary>
-        /// <param name="CardName">The card you want information about</param>
+        /// <param name="CardName">The name of the card you want information about</param>
         /// <param name="Season">What season to look for</param>
         /// <returns>An array of retrieved cards, an empty array if none are found</returns>
         public async Task<Card[]> GetCardAsync(string CardName)
@@ -186,65 +241,69 @@ namespace ARCore.DataDumpTools
             var command = new SQLiteCommand(SQL, connection);
             command.Parameters.AddWithValue("@name", CardName);
 
-            // In order to be forward-compatible, we return a list (casted later to an array)
-            // This ensures that additional seasons of cards require minimal maintenance on ARCore's part
-            List<Card> cards = new List<Card>();
-            using(var dbReader = await command.ExecuteReaderAsync())
-            {
-                while(dbReader.Read())
-                {
-                    try{
-                        cards.Add(new Card()
-                        {
-                            Season = (int)dbReader.GetInt64(1),
-                            name = dbReader.GetString(2),
-                            Type = dbReader.GetString(2),
-                            Motto = dbReader.GetString(3),
-                            Category = dbReader.GetString(4),
-                            Region = dbReader.GetString(5),
-                            Rarity = dbReader.GetString(6)
-                        });
-                    }
-                    catch (Exception e)
-                    {
-                        Logger.Log(LogEventType.Error, $"Error fetching {CardName}", e);
-                    }
-                    
-                }
-            }
-            return cards.ToArray();
+            return await FetchCards(command);
+        }
+
+        /// <summary>
+        /// Retrieves card information from the database
+        /// </summary>
+        /// <param name="CardID">The ID of the card you want information about</param>
+        /// <param name="Season">What season to look for</param>
+        /// <returns>An array of retrieved cards, an empty array if none are found</returns>
+        public async Task<Card[]> GetCardAsync(int CardID)
+        {
+            if(connection == null)
+                throw new ApplicationException("No database connection established.");
+
+            string SQL = "SELECT * FROM `cards` WHERE cardID=@cardID";
+            var command = new SQLiteCommand(SQL, connection);
+            command.Parameters.AddWithValue("@cardID", CardID);
+
+            return await FetchCards(command);
         }
 
         # region Paper_Thin_Sync_Wrappers
         /// <summary>
-        /// See: Async version
+        /// See: <see cref="GetPlayerInfoAsync(string NationName)"/>
         /// </summary>
-        public CardsAPI GetPlayerInfo(string NationName) =>
+        public CardsPlayerInfo GetPlayerInfo(string NationName) =>
             GetPlayerInfoAsync(NationName).GetAwaiter().GetResult();
 
         /// <summary>
-        /// See: Async version
+        /// See: <see cref="GetPlayerDeckInfoASync(string NationName)"/>
         /// </summary>
-        public CardsAPI GetPlayerDeckInfo(string NationName) =>
+        public CardsDeckInfo GetPlayerDeckInfo(string NationName) =>
             GetPlayerDeckInfoASync(NationName).GetAwaiter().GetResult();
 
         /// <summary>
-        /// See: Async version
+        /// See: <see cref="GetCardMarketAsync(string CardName, int Season)"/>
         /// </summary>
         public CardMarket GetCardMarket(string CardName, int Season) =>
             GetCardMarketAsync(CardName, Season).GetAwaiter().GetResult();
 
         /// <summary>
-        /// See: Async version
+        /// See: <see cref="GetCardAsync(string CardName, int Season)"/>
         /// </summary>
         public Card GetCard(string CardName, int Season) =>
             GetCardAsync(CardName, Season).GetAwaiter().GetResult();
 
         /// <summary>
-        /// See: Async version
+        /// See: <see cref="GetCardAsync(int CardID, int Season)"/>
+        /// </summary>
+        public Card GetCard(int CardID, int Season) =>
+            GetCardAsync(CardID, Season).GetAwaiter().GetResult();
+
+        /// <summary>
+        /// See: <see cref="GetCardAsync(string CardName) "/>
         /// </summary>
         public Card[] GetCard(string CardName) =>
             GetCardAsync(CardName).GetAwaiter().GetResult();
+
+        /// <summary>
+        /// See: <see cref="GetCardAsync(int CardID)"/>
+        /// </summary>
+        public Card[] GetCard(int CardID) =>
+            GetCardAsync(CardID).GetAwaiter().GetResult();
         # endregion
     }
 }

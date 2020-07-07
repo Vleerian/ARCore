@@ -69,8 +69,6 @@ namespace ARCore.Core
         // Wraps your async main and provides services
         public void Run(Func<IServiceProvider, CancellationToken, Task> MainCallback)
         {
-            Logger.logLevel = LogEventType.Debug;
-
             using(var services = ConfigureServices())
             {
                 // Get references to all the services we'll need to configure

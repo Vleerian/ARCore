@@ -1,5 +1,6 @@
 CREATE TABLE "cards" (
     "index"         INTEGER,
+	"cardID"		INTEGER,
 	"season"	    INTEGER,
 	"name"	        TEXT,
 	"type"	        TEXT,

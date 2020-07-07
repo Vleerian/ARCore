@@ -6,14 +6,14 @@ namespace ARCore.Helpers
 {
     public enum LogEventType
     {
+        None,
         Fatal,
         Error,
         Warning,
         Done,
         Information,
         Debug,
-        Verbose,
-        None
+        Verbose
     }
 
     public static class Logger

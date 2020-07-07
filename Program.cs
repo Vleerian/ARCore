@@ -2,6 +2,7 @@
 using System;
 using System.Linq;
 using System.Threading.Tasks;
+using System.Collections.Generic;
 
 using ARCore.Core;
 using ARCore.RealTimeTools;
@@ -9,26 +10,12 @@ using ARCore.DataDumpTools;
 using ARCore.Types;
 using ARCore.Helpers;
 
-using CommandLine;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace ARCore
 {
     class Program
     {
-        public class Options
-        {
-            [Option('n', "nation_dump", Required = false, Default = "nations.xml.gz", HelpText ="The nation data dump file to use.")]
-            public string NDataDump { get; set; }
-            [Option('r', "region_dump", Required = false, Default = "regions.xml.gz", HelpText = "The region data dump file to use.")]
-            public string RDataDump { get; set; }
-            [Option('m', "mode", Required = false, Default = "info", HelpText = "Output message mode.")]
-            public string Mode { get; set; }
-            [Option('u', "user", Required = true, Default = "Atagait Denral", HelpText = "The user of the application.")]
-            public string User { get; set; }
-            [Option('t', "update", Required = true, HelpText = "Which update you are targeting for (major/minor)")]
-            public string Update {get; set; }
-        }
         static void Main(string[] args)
         {
             Console.WriteLine("ARCore");
@@ -40,7 +27,7 @@ namespace ARCore
             Console.WriteLine("https://www.nationstates.net/pages/api.html");
             Console.WriteLine("======================================================");
 
-            Logger.logLevel = LogEventType.Verbose;
+            Logger.logLevel = LogEventType.Information;
             new ARCoordinator("Atagait Denral", true)
                 .Run(new Program().MainAsync);
         }
@@ -50,23 +37,46 @@ namespace ARCore
         private ARData Data;
         private ARTelegrams Telegrams;
 
-        const string PlayerInfoEnd = "https://www.nationstates.net/cgi-bin/api.cgi?q=cards+info;nationname=";
-        const string PlayerDeckEnd = "https://www.nationstates.net/cgi-bin/api.cgi?q=cards+deck;nationname=";
-
         public async Task MainAsync(IServiceProvider Services, CancellationToken cancellationToken){
             Cards = Services.GetRequiredService<ARCards>();
             API = Services.GetRequiredService<APIHandler>();
             Data = Services.GetRequiredService<ARData>();
             Telegrams = Services.GetRequiredService<ARTelegrams>();
 
-            API.Enqueue(out NSAPIRequest PlayerInfo, PlayerInfoEnd + "20XX");
-            API.Enqueue(out NSAPIRequest PlayerDeck, PlayerDeckEnd + "20XX");
-            while(!PlayerInfo.Done && !PlayerDeck.Done);
+            await Cards.InitializeDB();
 
-            var Player = await PlayerInfo.GetResultAsync<CardsAPI>();
-            var Deck = await PlayerInfo.GetResultAsync<CardMarket>();
+            var PlayerInfo = (await Cards.GetPlayerInfoAsync("20XX")).PlayerInfo;
+            var PlayerDeck = (await Cards.GetPlayerDeckInfoASync("20XX")).Deck
+                .OrderBy(Card => Card.CardID)
+                .GroupBy(Card => Card.CardID);
 
-            Console.WriteLine("Done...");
+            Console.WriteLine($"Player {PlayerInfo.PlayerName}");
+            Console.WriteLine($"Bank: {PlayerInfo.Bank}");
+
+            foreach(var aCard in PlayerDeck)
+            {
+                Console.WriteLine("====================");
+                var Card = aCard.First();
+                var CD = await Cards.GetCardAsync(Card.CardID, Card.Season);
+                Console.WriteLine($"{CD.Name} (S{CD.Season}) -- {CD.Rarity}");
+
+                var MarketData = await Cards.GetCardMarketAsync(Card.CardID, Card.Season);
+                if(MarketData.Markets.Count > 0)
+                {
+                    var buys = MarketData.Markets.Where(Market => Market.Type == "bid");
+                    if(buys.Count() > 0)
+                    {
+                        var MaxBuy = buys.Max(Bid=>Bid.Price);
+                        Console.WriteLine($"Buys: {buys.Count()} - MAX {MaxBuy}");
+                    }
+                    var sells = MarketData.Markets.Where(Market => Market.Type == "ask");
+                    if(sells.Count() > 0)
+                    {
+                        var MinSell = sells.Min(Bid=>Bid.Price);
+                        Console.WriteLine($"Sells: {sells.Count()} - MIN {MinSell}");
+                    }
+                }
+            }
         }
     }
 }

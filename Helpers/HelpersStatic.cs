@@ -55,7 +55,7 @@ namespace ARCore.Helpers
         public static bool CongfigureDatabase(string DatabaseName, out SQLiteConnection connection)
         {
             Logger.Log(LogEventType.Information, $"Connecting to {DatabaseName}");
-            bool setup = !File.Exists(DatabaseName);
+            bool setup = !File.Exists($"{DatabaseName}.db");
             connection = new SQLiteConnection($"Data Source={DatabaseName}.db;Version=3;").OpenAndReturn();
             if(!setup)
             {
@@ -64,7 +64,7 @@ namespace ARCore.Helpers
             }
 
             Logger.Log(LogEventType.Information, $"Setting up {DatabaseName}");
-            string DatabaseSetup = File.ReadAllText("./{DatabaseName}.ddl");
+            string DatabaseSetup = File.ReadAllText($"./{DatabaseName}.ddl");
             string[] Queries = DatabaseSetup.Split("|||");
             using(var transaction = connection.BeginTransaction())
             {
